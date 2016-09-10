@@ -43,7 +43,7 @@ defmodule S1C8 do
   end
 end
 
-path = "8.txt"
+path = "1/8.txt"
 lines = path
 |> File.read!
 |> String.split
@@ -58,6 +58,7 @@ dists = lines |> Enum.with_index |> Enum.map(fn ({l, idx}) ->
   {idx, hd(S1C8.dists(l, 4, 20))}
 end) |> Enum.sort_by(fn ({_idx, {_n, dist}}) -> dist end)
 
+IO.inspect(dists)
 {best, {keylen, _}} = hd(dists)
 IO.inspect [best, keylen]
 

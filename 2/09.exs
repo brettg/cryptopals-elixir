@@ -1,8 +1,9 @@
 defmodule C2E9 do
 
   def pkcs_pad(list, blocksize) do
-    num = blocksize - length(list)
-    if num > 0 do
+    last_size = rem(length(list), blocksize)
+    if last_size != 0 do
+      num = blocksize - last_size
       list ++ for n <- 1..num, do: num
     else
       list
