@@ -52,6 +52,8 @@ defmodule CryptUtils do
 
   def pkcs_padding(n), do: (for _ <- 1..n, do: n)
   def rand_bytes(n), do: (for _ <- 1..n, do: :rand.uniform(0xff + 1) - 1)
+
+  def const_bytes(0, _), do: []
   def const_bytes(n, byte), do: (for _ <- 1..n, do: byte)
 
   def determine_blocksize(enc_fn) do
@@ -93,56 +95,52 @@ end
 
 defmodule S2C13 do
   @key CryptUtils.rand_bytes(16)
-  @base_profile [{"uid", 10}, {"role", "user"}]
+  @prefix  CryptUtils.rand_bytes(:rand.uniform(40))
+  @secret 'This is the secret text. It is quite amazing. For you, at least.'
 
-  def decode_profile(prof_string) do
-    URI.decode_query(IO.iodata_to_binary(prof_string))
-  end
-  def encode_profile(attrs) do
-    attrs
-    |> Enum.map(fn({k, v}) -> "#{k}=#{v}" end)
-    |> Enum.join("&")
+  def enc_oracle(list) do
+    CryptUtils.aes_ecb_encrypt(@key, @prefix ++ list ++ @secret)
   end
 
-  def profile_for(email) do
-    encode_profile([{"email", email} | @base_profile])
+  def solve_next_char(enc_fn, {blocksize, psize}, solved) do
+   solved_len = length(solved)
+
+   solve_fill = Enum.take(solved, -(blocksize - 1))
+   dict_fill = CryptUtils.const_bytes(blocksize - length(solve_fill) - 1, ?A) ++ solve_fill
+   dict = make_dictionary(enc_fn, dict_fill, psize)
+
+   prefix_pad_n = blocksize - rem(psize, blocksize)
+   offset_fill_n = blocksize - rem(solved_len, blocksize) - 1
+   to_encrypt = CryptUtils.const_bytes(prefix_pad_n + blocksize + offset_fill_n, ?A)
+   enc = enc_fn.(to_encrypt)
+
+   block_num = (div(psize, blocksize) + 1) + (div(length(solved), blocksize) + 1)
+   block = Enum.slice(enc, block_num * blocksize, blocksize)
+
+   dict[block]
   end
 
-  def encrypt_profile(email) do
-    CryptUtils.aes_ecb_encrypt(@key, profile_for(IO.iodata_to_binary(email)) |> :binary.bin_to_list)
+  def solve_secret(enc_fn, sizes), do: solve_secret(enc_fn, sizes, '', 0)
+  def solve_secret(_, {_, _, secret_size}, _, secret_size), do: []
+  def solve_secret(enc_fn, {blocksize, psize, ssize}, prev, offset) do
+    next_char = [solve_next_char(enc_fn, {blocksize, psize}, prev)]
+    next_char ++ solve_secret(enc_fn, {blocksize, psize, ssize}, prev ++ next_char, offset + 1)
   end
 
-  def decrypt_profile(ctext) do
-    CryptUtils.aes_ecb_decrypt(@key, ctext) |> decode_profile
-  end
+  def make_dictionary(enc_fn, base, prefix_size) do
+    blocksize = length(base) + 1
+    prefix_pad = CryptUtils.const_bytes(blocksize - rem(prefix_size, blocksize), ?A)
+    target_block = div(prefix_size, blocksize) + 1
 
-  def decrypt(l) do
-    CryptUtils.aes_ecb_decrypt(@key, l)
+    Enum.reduce(0..255, %{}, fn(n, map) ->
+      Map.put(map, enc_fn.(prefix_pad ++ base ++ [n])
+      |> Enum.slice(blocksize * target_block, blocksize), n)
+    end)
   end
 end
 
+{blocksize, secret_size} = CryptUtils.determine_blocksize(&S2C13.enc_oracle/1)
+prefix_size = CryptUtils.determine_prefix_size(&S2C13.enc_oracle/1, blocksize)
 
-# IO.puts(CryptUtils.pkcs_unpad('email=aaa&id=10&role=user\a\a\a\a\a\a\a'))
-# IO.puts(S2C13.profile_for("aaa"))
-# IO.inspect(S2C13.encrypt_profile("aaa"))
-# IO.inspect(S2C13.decrypt_profile(S2C13.encrypt_profile("aaa")))
-
-# Depends on knowledge of underlying serialization details (e.g. order),
-# but that appears normal for exercise...
-
-{blocksize, secret_size} = CryptUtils.determine_blocksize(&S2C13.encrypt_profile/1)
-prefix_size = CryptUtils.determine_prefix_size(&S2C13.encrypt_profile/1, blocksize)
-
-gen_admin_input = CryptUtils.const_bytes(blocksize - prefix_size, ?A) ++
-                  CryptUtils.pkcs_pad('admin', blocksize)
-
-admin_ctext = S2C13.encrypt_profile(gen_admin_input)
-admin_block = Enum.slice(admin_ctext, (div(prefix_size, blocksize) + 1) * blocksize, blocksize)
-
-len_needed = blocksize - rem(secret_size, blocksize) + length('user')
-base_ctext = S2C13.encrypt_profile(CryptUtils.const_bytes(len_needed, ?A))
-new_ctext = Enum.slice(base_ctext, 0, length(base_ctext) - blocksize) ++ admin_block
-
-IO.inspect [len_needed, length(base_ctext), length(new_ctext)]
-
-IO.inspect S2C13.decrypt_profile(new_ctext)
+IO.inspect {blocksize, secret_size, prefix_size}
+IO.inspect S2C13.solve_secret(&S2C13.enc_oracle/1, {blocksize, prefix_size, secret_size - prefix_size})
