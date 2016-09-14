@@ -43,10 +43,14 @@ defmodule CryptUtils do
   def pkcs_unpad(list) do
     size = length(list)
     num = List.last(list)
-    if num > 0 and num < size and Enum.slice(list, size - num, num) == pkcs_padding(num) do
-      Enum.slice(list, 0, size - num)
-    else
-      list
+    valid_num = num > 0 and num < size
+    cond do
+      valid_num and Enum.slice(list, size - num, num) == pkcs_padding(num) ->
+        Enum.slice(list, 0, size - num)
+      valid_num and num != 0xa and num != 0xd -> # Line Feeds / Carriage Returns are ok.
+        raise "Invalid PKCS7 Padding!"
+      true ->
+        list
     end
   end
 
@@ -93,55 +97,18 @@ defmodule CryptUtils do
   end
 end
 
-defmodule S2C13 do
-  @key CryptUtils.rand_bytes(16)
-  @prefix  CryptUtils.rand_bytes(:rand.uniform(40))
-  @secret 'This is the secret text. It is quite amazing. For you, at least.'
+IO.inspect CryptUtils.pkcs_unpad('ABCDEFGHIJ' ++ [6, 6, 6, 6, 6, 6])
+IO.inspect CryptUtils.pkcs_unpad('ABCDEFGHIJKLMNO\n')
+IO.inspect CryptUtils.pkcs_unpad('ABCDEFGHIJKLMNO\r')
 
-  def enc_oracle(list) do
-    CryptUtils.aes_ecb_encrypt(@key, @prefix ++ list ++ @secret)
-  end
-
-  def solve_next_char(enc_fn, {blocksize, psize}, solved) do
-   solved_len = length(solved)
-
-   solve_fill = Enum.take(solved, -(blocksize - 1))
-   dict_fill = CryptUtils.const_bytes(blocksize - length(solve_fill) - 1, ?A) ++ solve_fill
-   dict = make_dictionary(enc_fn, dict_fill, psize)
-
-   prefix_pad_n = blocksize - rem(psize, blocksize)
-   offset_fill_n = blocksize - rem(solved_len, blocksize) - 1
-   to_encrypt = CryptUtils.const_bytes(prefix_pad_n + blocksize + offset_fill_n, ?A)
-   enc = enc_fn.(to_encrypt)
-
-   block_num = (div(psize, blocksize) + 1) + (div(length(solved), blocksize) + 1)
-   block = Enum.slice(enc, block_num * blocksize, blocksize)
-
-   dict[block]
-  end
-
-  def solve_secret(enc_fn, sizes), do: solve_secret(enc_fn, sizes, '', 0)
-  def solve_secret(_, {_, _, secret_size}, _, secret_size), do: []
-  def solve_secret(enc_fn, {blocksize, psize, ssize}, prev, offset) do
-    next_char = [solve_next_char(enc_fn, {blocksize, psize}, prev)]
-    next_char ++ solve_secret(enc_fn, {blocksize, psize, ssize}, prev ++ next_char, offset + 1)
-  end
-
-  def make_dictionary(enc_fn, base, prefix_size) do
-    blocksize = length(base) + 1
-    prefix_pad = CryptUtils.const_bytes(blocksize - rem(prefix_size, blocksize), ?A)
-    target_block = div(prefix_size, blocksize) + 1
-
-    Enum.reduce(0..255, %{}, fn(n, map) ->
-      Map.put(map, enc_fn.(prefix_pad ++ base ++ [n])
-      |> Enum.slice(blocksize * target_block, blocksize), n)
-    end)
-  end
+try do
+  IO.inspect CryptUtils.pkcs_unpad('ABCDEFGHIJ' ++ [5, 6, 6, 6, 6, 6])
+rescue
+  _ -> IO.puts "Good"
 end
 
-{blocksize, secret_size} = CryptUtils.determine_blocksize(&S2C13.enc_oracle/1)
-prefix_size = CryptUtils.determine_prefix_size(&S2C13.enc_oracle/1, blocksize)
-
-IO.inspect {blocksize, secret_size, prefix_size}
-IO.inspect S2C13.solve_secret(&S2C13.enc_oracle/1,
-                              {blocksize, prefix_size, secret_size - prefix_size})
+try do
+  IO.inspect CryptUtils.pkcs_unpad('ABCDEFGHIJ' ++ [7, 7, 7, 7, 7, 7])
+rescue
+  _ -> IO.puts "Good"
+end
