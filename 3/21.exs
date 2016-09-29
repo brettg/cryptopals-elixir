@@ -3,16 +3,7 @@ use Bitwise
 defmodule MT19937 do
   @w 32
   @n 624
-  @m 397
-  @a 0x9908B0DF
-  @u 11
-  @s 7
-  @b 0x9D2C5680
-  @t 15
-  @c 0xEFC60000
-  @l 18
 
-  @f 1812433253
   @low_bits 0xFFFFFFFF
 
   def seed(n) do
@@ -25,10 +16,10 @@ defmodule MT19937 do
 
     idx = Process.get(:mt19937_idx)
     num = elem(Process.get(:mt19937_series), idx)
-    num = num ^^^ (num >>> @u)
-    num = num ^^^ ((num <<< @s) &&& @b)
-    num = num ^^^ ((num <<< @t) &&& @c)
-    num = num ^^^ (num >>> @l)
+    num = num ^^^ (num >>> 11)
+    num = num ^^^ ((num <<< 7) &&& 0x9D2C5680)
+    num = num ^^^ ((num <<< 15) &&& 0xEFC60000)
+    num = num ^^^ (num >>> 18)
 
     Process.put(:mt19937_idx, idx + 1)
 
@@ -39,9 +30,9 @@ defmodule MT19937 do
     new_mt = Enum.reduce(0..(@n - 1), Process.get(:mt19937_series), fn(i, mt) ->
       x = (elem(mt, i) &&& 0x80000000) + (elem(mt, rem(i + 1, @n)) &&& 0x7fffffff)
       xA = x >>> 1
-      xA = if rem(x, 2) != 0, do: xA ^^^ @a, else: xA
+      xA = if rem(x, 2) != 0, do: xA ^^^ 0x9908B0DF, else: xA
 
-      put_elem(mt, i, elem(mt, rem(i + @m, @n)) ^^^ xA)
+      put_elem(mt, i, elem(mt, rem(i + 397, @n)) ^^^ xA)
     end)
 
     Process.put(:mt19937_series, new_mt)
@@ -51,7 +42,7 @@ defmodule MT19937 do
   defp gen_series(first), do: List.to_tuple([first | gen_series(first, 1)])
   defp gen_series(_prev, @n), do: []
   defp gen_series(prev, idx) do
-    num = @low_bits &&& ((@f * (prev ^^^ (prev >>> (@w - 2)))) + idx)
+    num = @low_bits &&& ((1812433253 * (prev ^^^ (prev >>> 30))) + idx)
     [num | gen_series(num, idx + 1)]
   end
 end
