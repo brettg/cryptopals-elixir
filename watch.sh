@@ -8,4 +8,4 @@ read_and_pipe() {
   done
 }
 
-fswatch */[0-9][0-9].exs **/**/[0-9][0-9].exs | read_and_pipe | xargs -n 1 elixir
+fswatch */[0-9][0-9].exs **/**/[0-9][0-9].exs | read_and_pipe | xargs -n 1 time elixir
