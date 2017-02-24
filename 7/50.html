@@ -1,0 +1,32 @@
+<!--
+cd 7
+python -m SimpleHTTPServer 8000
+-->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+<script>
+  function hash(msg){
+    var key = CryptoJS.enc.Hex.parse("59454c4c4f57205355424d4152494e45");
+    var iv = {words: [0, 0, 0, 0]};
+    var enc = CryptoJS.AES.encrypt(msg, key, {iv: iv}).ciphertext.toString();
+    return enc.slice(enc.length - 32);
+  }
+  function valid(msg){
+    return "296b8d7cb78a243dda4d0a61d33bbdd1" == hash(msg);
+  }
+
+  function evalIfValid(msg){
+    if(valid(msg)){ eval(msg); }
+  }
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/50.js');
+  xhr.onreadystatechange = function() {
+    if(xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+      console.log([xhr.responseText]);
+      console.log(hash(xhr.responseText));
+      evalIfValid(xhr.responseText);
+    }
+  }
+  xhr.send();
+</script>
